@@ -76,38 +76,40 @@ func (r *runner) run() error {
 		return err
 	}
 
-	// Based on https://pkg.go.dev/net/http#example-Server.Shutdown
-	idleConnsClosed := make(chan any)
+	shutdownErrChan, shutdownCancel := func() (chan error, context.CancelFunc) {
+		shutdownCtx, cancel := context.WithCancel(context.Background())
+		ch := make(chan error)
+		go func() {
+			if !r.isTest {
+				// Set up signal handler
+				signal.Notify(r.sigChan, r.Signals...)
+				defer signal.Stop(r.sigChan)
+			}
 
-	var shutdownErr error
+			// Wait for signal or context cancellation
+			select {
+			case sig := <-r.sigChan:
+				r.log(fmt.Sprintf("Got signal %s, shutting down...", sig))
+			case <-shutdownCtx.Done():
+				return
+			}
 
-	go func() {
-		if !r.isTest {
-			// Set up signal handler
-			signal.Notify(r.sigChan, r.Signals...)
-		}
-
-		// Wait for signal
-		sig := <-r.sigChan
-		if !r.isTest {
-			signal.Stop(r.sigChan)
-		}
-		r.log(fmt.Sprintf("Got signal %s, shutting down...", sig))
-
-		// Shut down server, with optional timeout
-		ctx := r.ShutdownContext
-		if ctx == nil {
-			ctx = context.Background()
-		}
-		if r.Timeout > 0 {
-			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(ctx, r.Timeout)
-			defer cancel()
-		}
-		shutdownErr = r.server.Shutdown(ctx)
-		r.log("Server shutdown complete")
-		close(idleConnsClosed)
+			// Shut down server, with optional timeout
+			ctx := r.ShutdownContext
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			if r.Timeout > 0 {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, r.Timeout)
+				defer cancel()
+			}
+			ch <- r.server.Shutdown(ctx)
+			r.log("Server shutdown complete")
+		}()
+		return ch, cancel
 	}()
+	defer shutdownCancel() // Ensure shutdown goroutine is cleaned up when server exits
 
 	listenAddr := r.server.Addr
 	if r.isTest {
@@ -116,17 +118,13 @@ func (r *runner) run() error {
 	}
 
 	r.log(fmt.Sprintf("Starting server on %s...", listenAddr))
-	err = r.server.Serve(ln)
-	if err == http.ErrServerClosed { // Expected, so not a real error
-		err = nil
+	if err := r.server.Serve(ln); err != http.ErrServerClosed {
+		// Unexpected error, so return it and skip waiting for shutdown to complete
+		return err
 	}
 
-	<-idleConnsClosed // Wait until shutdown has finished
-
-	if err == nil {
-		err = shutdownErr
-	}
-	return err
+	// Wait until shutdown has finished, returning error, if any
+	return <-shutdownErrChan
 }
 
 // Option functions configure the behavior of the graceful shutdown process.
