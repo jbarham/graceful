@@ -1,7 +1,7 @@
 # graceful
 
 `graceful` is a small Go library that provides a drop-in replacement for the standard
-[http.ListenAndServer](https://pkg.go.dev/net/http#ListenAndServe) function to run HTTP servers with graceful shutdown capabilities.
+[http.ListenAndServe](https://pkg.go.dev/net/http#ListenAndServe) function to run HTTP servers with graceful shutdown capabilities.
 
 ## Installation
 
