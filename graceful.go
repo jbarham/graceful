@@ -78,7 +78,7 @@ func (r *runner) run() error {
 
 	shutdownErrChan, shutdownCancel := func() (chan error, context.CancelFunc) {
 		shutdownCtx, cancel := context.WithCancel(context.Background())
-		ch := make(chan error)
+		ch := make(chan error, 1)
 		go func() {
 			if !r.isTest {
 				// Set up signal handler
