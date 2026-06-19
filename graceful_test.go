@@ -18,7 +18,7 @@ func TestNilServer(t *testing.T) {
 }
 
 func TestEmptySignalList(t *testing.T) {
-	err := Run(&http.Server{}, WithSignals())
+	err := ListenAndServe(":0", nil, WithSignals())
 	if err != ErrEmptySignalList {
 		t.Fatalf("got error %s but wanted %s", err, ErrEmptySignalList)
 	}
@@ -66,7 +66,7 @@ func TestShutdown(t *testing.T) {
 					fmt.Fprint(w, "Hello, world!")
 				}),
 			}
-			r, err := newRunner(server, WithTimeout(test.timeout))
+			r, err := newRunner(server, true, WithTimeout(test.timeout))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -91,7 +91,7 @@ func TestShutdown(t *testing.T) {
 				r.sigChan <- syscall.SIGINT        // Trigger shutdown
 			})
 			if err := r.run(); err != nil && err.Error() != test.expectedErr {
-				t.Fatalf("got error %s but wanted %s", err, test.expectedErr)
+				t.Errorf("got error %s but wanted %s", err, test.expectedErr)
 			}
 			wg.Wait()
 		})

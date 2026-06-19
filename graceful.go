@@ -10,34 +10,38 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"testing"
 	"time"
 )
 
 var (
-	ErrNilServer       = errors.New("server is nil")
-	ErrEmptySignalList = errors.New("signal list is empty")
+	ErrNilServer       = errors.New("graceful: server is nil")
+	ErrEmptySignalList = errors.New("graceful: signal list is empty")
 )
 
 type runner struct {
-	Timeout time.Duration
-	Signals []os.Signal
-	LogFunc func(...any)
+	Timeout         time.Duration
+	Signals         []os.Signal
+	ShutdownContext context.Context
+	LogFunc         func(msg string)
 
-	server     *http.Server
-	sigChan    chan os.Signal
-	listenPort int // Testing only
+	server  *http.Server
+	sigChan chan os.Signal
+
+	// Testing only
+	isTest     bool
+	listenPort int
 }
 
-func newRunner(s *http.Server, opts ...Option) (*runner, error) {
+func newRunner(s *http.Server, isTest bool, opts ...Option) (*runner, error) {
 	if s == nil {
 		return nil, ErrNilServer
 	}
 	r := &runner{
 		Signals: []os.Signal{syscall.SIGTERM, syscall.SIGINT},
-		LogFunc: log.Println,
+		LogFunc: func(msg string) { log.Println(msg) },
 		server:  s,
 		sigChan: make(chan os.Signal, 1),
+		isTest:  isTest,
 	}
 	for _, opt := range opts {
 		opt(r)
@@ -67,17 +71,23 @@ func (r *runner) run() error {
 	var shutdownErr error
 
 	go func() {
-		if !testing.Testing() {
+		if !r.isTest {
 			// Set up signal handler
 			signal.Notify(r.sigChan, r.Signals...)
 		}
 
 		// Wait for signal
 		sig := <-r.sigChan
+		if !r.isTest {
+			signal.Stop(r.sigChan)
+		}
 		r.log(fmt.Sprintf("Got signal %s, shutting down...", sig))
 
 		// Shut down server, with optional timeout
-		ctx := context.Background()
+		ctx := r.ShutdownContext
+		if ctx == nil {
+			ctx = context.Background()
+		}
 		if r.Timeout > 0 {
 			var cancel context.CancelFunc
 			ctx, cancel = context.WithTimeout(ctx, r.Timeout)
@@ -89,7 +99,7 @@ func (r *runner) run() error {
 	}()
 
 	listenAddr := r.server.Addr
-	if testing.Testing() {
+	if r.isTest {
 		r.listenPort = ln.Addr().(*net.TCPAddr).Port
 		listenAddr = fmt.Sprintf(":%d", r.listenPort)
 	}
@@ -118,14 +128,23 @@ func WithSignals(signals ...os.Signal) Option {
 	return func(r *runner) { r.Signals = signals }
 }
 
-func WithLogFunc(logger func(...any)) Option {
+func WithShutdownContext(ctx context.Context) Option {
+	return func(r *runner) { r.ShutdownContext = ctx }
+}
+
+func WithLogFunc(logger func(msg string)) Option {
 	return func(r *runner) { r.LogFunc = logger }
 }
 
-func Run(s *http.Server, opts ...Option) error {
-	r, err := newRunner(s, opts...)
+func Run(server *http.Server, opts ...Option) error {
+	r, err := newRunner(server, false, opts...)
 	if err != nil {
 		return err
 	}
 	return r.run()
+}
+
+func ListenAndServe(addr string, handler http.Handler, opts ...Option) error {
+	s := &http.Server{Addr: addr, Handler: handler}
+	return Run(s, opts...)
 }
