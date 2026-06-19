@@ -1,3 +1,14 @@
+// Package graceful provides a simple way to run an HTTP server with graceful shutdown capabilities.
+//
+// It listens for specified OS signals (defaulting to SIGTERM and SIGINT) and shuts down the server gracefully,
+// by calling [http.Server.Shutdown], when one of those signals is received.
+// In particular, this allows the server to finish handling any in-flight HTTP requests before shutting down, instead of terminating immediately.
+//
+// The simplest way to use graceful is to replace calls to [http.ListenAndServe] with [graceful.ListenAndServe],
+// which has the same signature but adds graceful shutdown functionality.
+//
+// For more advanced use cases, you can create a [http.Server] and call [graceful.Run] directly,
+// which allows you to customize the shutdown behavior with the provided options.
 package graceful
 
 import (
@@ -118,24 +129,39 @@ func (r *runner) run() error {
 	return err
 }
 
+// Option functions configure the behavior of the graceful shutdown process.
 type Option func(*runner)
 
+// WithTimeout sets the timeout for the shutdown process.
+// If the shutdown takes longer than this, it will be forcefully terminated.
 func WithTimeout(t time.Duration) Option {
 	return func(r *runner) { r.Timeout = t }
 }
 
+// WithSignals sets the signals that will trigger the shutdown process.
+// The default signals are SIGTERM and SIGINT.
 func WithSignals(signals ...os.Signal) Option {
 	return func(r *runner) { r.Signals = signals }
 }
 
+// WithShutdownContext sets the context that will be used for the shutdown process.
+// The default context is [context.Background].
+//
+// If a timeout is also set by [WithTimeout], the shutdown will be canceled if it takes longer than the timeout, even if the context itself has not been canceled.
 func WithShutdownContext(ctx context.Context) Option {
 	return func(r *runner) { r.ShutdownContext = ctx }
 }
 
+// WithLogFunc sets the logging function that will be used to log messages during the server lifecycle.
+// The default logging function is log.Println.
 func WithLogFunc(logger func(msg string)) Option {
 	return func(r *runner) { r.LogFunc = logger }
 }
 
+// Run starts the HTTP server and shuts it down gracefully when a signal is received.
+// The default behavior can be customized with the provided options.
+//
+// Run returns any error that occurs during startup or shutdown. It returns nil on successful shutdown.
 func Run(server *http.Server, opts ...Option) error {
 	r, err := newRunner(server, false, opts...)
 	if err != nil {
@@ -144,6 +170,9 @@ func Run(server *http.Server, opts ...Option) error {
 	return r.run()
 }
 
+// ListenAndServe is a convenience wrapper around [Run] that creates an http.Server with the given address and handler.
+//
+// ListenAndServe is intended primarily as a drop-in replacement for [http.ListenAndServe] which adds graceful shutdown functionality.
 func ListenAndServe(addr string, handler http.Handler, opts ...Option) error {
 	s := &http.Server{Addr: addr, Handler: handler}
 	return Run(s, opts...)
