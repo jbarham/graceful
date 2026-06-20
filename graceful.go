@@ -24,10 +24,7 @@ import (
 	"time"
 )
 
-var (
-	ErrNilServer       = errors.New("graceful: server is nil")
-	ErrEmptySignalList = errors.New("graceful: signal list is empty")
-)
+var ErrNilServer = errors.New("graceful: server is nil")
 
 type runner struct {
 	Timeout         time.Duration
@@ -56,9 +53,6 @@ func newRunner(s *http.Server, isTest bool, opts ...Option) (*runner, error) {
 	}
 	for _, opt := range opts {
 		opt(r)
-	}
-	if len(r.Signals) == 0 {
-		return nil, ErrEmptySignalList
 	}
 	return r, nil
 }
@@ -138,8 +132,8 @@ func WithTimeout(t time.Duration) Option {
 
 // WithSignals sets the signals that will trigger the shutdown process.
 // The default signals are SIGTERM and SIGINT.
-func WithSignals(signals ...os.Signal) Option {
-	return func(r *runner) { r.Signals = signals }
+func WithSignals(sig os.Signal, extra ...os.Signal) Option {
+	return func(r *runner) { r.Signals = append([]os.Signal{sig}, extra...) }
 }
 
 // WithShutdownContext sets the context that will be used for the shutdown process.

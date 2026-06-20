@@ -17,13 +17,6 @@ func TestNilServer(t *testing.T) {
 	}
 }
 
-func TestEmptySignalList(t *testing.T) {
-	err := ListenAndServe(":0", nil, WithSignals())
-	if err != ErrEmptySignalList {
-		t.Fatalf("got error %s but wanted %s", err, ErrEmptySignalList)
-	}
-}
-
 func TestShutdown(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	for _, test := range []struct {
