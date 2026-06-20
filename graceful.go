@@ -7,8 +7,9 @@
 // The simplest way to use graceful is to replace calls to [http.ListenAndServe] with [graceful.ListenAndServe],
 // which has the same signature but adds graceful shutdown functionality.
 //
-// For more advanced use cases, you can create a [http.Server] and call [graceful.Run] directly,
-// which allows you to customize the shutdown behavior with the provided options.
+// For more advanced use cases, you can create a [http.Server] and call [graceful.Run] directly.
+//
+// The default shutdown behavior can be customized with the provided [Option] functions.
 package graceful
 
 import (
@@ -151,7 +152,6 @@ func WithLogFunc(logger func(msg string)) Option {
 }
 
 // Run starts the HTTP server and shuts it down gracefully when a signal is received.
-// The default behavior can be customized with the provided options.
 //
 // Run returns any error that occurs during startup or shutdown. It returns nil on successful shutdown.
 func Run(server *http.Server, opts ...Option) error {
